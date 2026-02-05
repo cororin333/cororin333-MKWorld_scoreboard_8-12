@@ -29,6 +29,10 @@
               <label class="radio"><input type="radio" name="players" value="24">24人制</label>
             </div>
             <div class="ruleLine">
+              <span class="label">対戦形式</span>
+              <select id="selMode" class="sel"></select>
+            </div>
+            <div class="ruleLine">
               <span class="label">レース数</span>
               <label class="radio"><input type="radio" name="races" value="8" checked>8</label>
               <label class="radio"><input type="radio" name="races" value="12">12</label>
@@ -37,18 +41,14 @@
 
           <div class="ruleCol">
             <div class="ruleLine">
-              <span class="label">対戦形式</span>
-              <select id="selMode" class="sel"></select>
-            </div>
-            <div class="ruleLine">
               <span class="label">通過組数</span>
               <input id="inpQualify" class="inp small" inputmode="numeric" autocomplete="off" tabindex="-1" />
             </div>
             <div class="ruleLine">
               <span class="label">CPU加算</span>
               <div class="cpuBox">
-                <label class="radio"><input type="radio" name="cpuCalc" value="MKB" checked>MKB</label>
-                <label class="radio"><input type="radio" name="cpuCalc" value="SUMMIT">SUMMIT</label>
+                <label class="radio"><input type="radio" name="cpuCalc" value="MKB" checked>MKBルール</label>
+                <label class="radio"><input type="radio" name="cpuCalc" value="SUMMIT">SUMMITルール</label>
               </div>
             </div>
           </div>
@@ -69,11 +69,9 @@
             <table class="sheet" id="tagTable" aria-label="タグ設定"></table>
           </div>
 
-          <div class="cpuMini">
+          <div class="cpuMini" id="cpuMini" aria-label="CPU設定">
             <div class="cpuMiniHead">★CPU</div>
-            <div class="cpuMiniBody">
-              <input id="inpCpuKey" class="inp center" maxlength="1" autocomplete="off" />
-            </div>
+            <div class="cpuMiniBody" id="cpuMiniBody"></div>
           </div>
         </div>
       </section>
@@ -87,7 +85,7 @@
         </div>
 
         <div class="pinRow">
-          <button id="btnPin" class="btn">タグ画面固定 [ON]</button>
+          <button id="btnPin" class="btn">タグ固定</button>
           <div id="pinPreview" class="pinPreview" aria-label="タグ固定プレビュー"></div>
         </div>
 
@@ -123,7 +121,6 @@
           <div class="optTitle">集計オプション</div>
           <button id="btnCopyOpt" class="btn">copy</button>
           <select id="selView" class="sel"></select>
-          <label class="chk"><input id="chkShowOthers" type="checkbox" checked>自チーム以外表示</label>
           <span id="autoCopyMsg" class="autoCopyMsg" aria-live="polite"></span>
         </div>
 
