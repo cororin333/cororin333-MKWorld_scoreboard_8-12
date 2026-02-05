@@ -1,15 +1,16 @@
 (()=> {
   'use strict';
 
-  const VERSION = 'mkworld_full_8_12_noimg_v1';
+  // 互換破棄（安全優先）
+  const VERSION = 'mkworld_8_12_noimg_v2_fixed';
   const LS_KEY = 'mkworld:' + location.pathname;
 
   const SELECT_COLORS = [
     {name:'未選択', color:''},
-    {name:'赤', color:'#FE3C4F'},
-    {name:'青', color:'#498CF0'},
-    {name:'黄', color:'#FFF200'},
-    {name:'緑', color:'#57C544'},
+    {name:'🔴赤', color:'#FE3C4F'},
+    {name:'🔵青', color:'#498CF0'},
+    {name:'🟡黄', color:'#FFF200'},
+    {name:'🟢緑', color:'#57C544'},
   ];
   const AUTO_COLORS = ['#FF7CD5','#7BE0FF','#FD8600','#AD6BFF','#ACF243','#B58464','#FFB5EC','#CCCCCC'];
   const CPU_COLOR = '#4C4C4C';
@@ -48,7 +49,8 @@
   const btnResetTags = $('#btnResetTags');
   const dupKeyMsg = $('#dupKeyMsg');
   const tagTable = $('#tagTable');
-  const inpCpuKey = $('#inpCpuKey');
+
+  const cpuMiniBody = $('#cpuMiniBody');
 
   const btnResetAll = $('#btnResetAll');
   const btnPin = $('#btnPin');
@@ -70,7 +72,6 @@
   const certText = $('#certText');
 
   const selView = $('#selView');
-  const chkShowOthers = $('#chkShowOthers');
   const autoCopyMsg = $('#autoCopyMsg');
 
   const logAdj = $('#logAdj');
@@ -94,12 +95,14 @@
     locks: {},
     adjLog: [],
     showSum: false,
-    showCert: false,
-    viewTeam: 'none',
-    showOthers: true,
+    showCert: true,          // 初期ON（確定）
+    optViewTeam: 'none',     // 集計オプション：初期「表示なし」
     showCourseLog: false,
     lastUpdated: 0,
     autosaveOff: false,
+
+    // 内部：自動コピー失敗メッセージ保持
+    autoCopyHoldFail: false,
   };
 
   function nowMs(){ return Date.now(); }
@@ -144,11 +147,24 @@
     return {fmt, teams};
   }
 
-  function shouldShowColorPicker(players, modeId, teamCount){
-    if(players===24 && modeId==='FFA') return false;
+  // 色選択あり/なし：チーム数4以下のみ（確定）
+  function hasColorSelect(teamCount){
     return teamCount <= 4;
   }
+
   function teamAutoColor(i){ return AUTO_COLORS[i % AUTO_COLORS.length]; }
+
+  function getTeamColorForScoreCell(teamIndex){
+    // 順位入力セルの色：色選択ありなら選択色、なしなら自動色
+    const {fmt} = derived(state.players, state.mode);
+    const t = state.teams[teamIndex];
+    if(!t) return '';
+    if(hasColorSelect(fmt.teamCount)){
+      return t.color || '';
+    }
+    // 色選択なしは自動色
+    return teamAutoColor(teamIndex);
+  }
 
   let saveTimer = null;
   function scheduleSave(){
@@ -176,8 +192,7 @@
         adjLog: state.adjLog,
         showSum: state.showSum,
         showCert: state.showCert,
-        viewTeam: state.viewTeam,
-        showOthers: state.showOthers,
+        optViewTeam: state.optViewTeam,
         showCourseLog: state.showCourseLog,
       };
       localStorage.setItem(LS_KEY, JSON.stringify(obj));
@@ -186,33 +201,11 @@
     }
   }
 
-  function isAllRacesFilledForReset(obj){
-    const players = obj.players;
-    const races = obj.races;
-    if(!(races===8 || races===12)) return false;
-    const cells = obj.cells || {};
-    for(let r=0;r<races;r++){
-      for(let p=0;p<players;p++){
-        const v = (cells?.[r]?.[p] ?? '');
-        if(v === '') return false;
-      }
-    }
-    return true;
-  }
-
   function loadSaved(){
     try{
       const raw = localStorage.getItem(LS_KEY);
       if(!raw) return false;
       const obj = JSON.parse(raw);
-
-      if(obj && typeof obj.lastUpdated === 'number'){
-        const remaining0 = isAllRacesFilledForReset(obj);
-        if(remaining0 && (nowMs() - obj.lastUpdated) >= 48*60*60*1000){
-          localStorage.removeItem(LS_KEY);
-          return false;
-        }
-      }
 
       if(!obj || obj.version !== VERSION){
         localStorage.removeItem(LS_KEY);
@@ -243,9 +236,8 @@
       state.adjLog = Array.isArray(obj.adjLog) ? obj.adjLog : [];
 
       state.showSum = !!obj.showSum;
-      state.showCert = !!obj.showCert;
-      state.viewTeam = obj.viewTeam ?? 'none';
-      state.showOthers = (obj.showOthers !== false);
+      state.showCert = (obj.showCert !== false); // 初期ONを優先
+      state.optViewTeam = obj.optViewTeam ?? 'none';
       state.showCourseLog = !!obj.showCourseLog;
 
       state.lastUpdated = obj.lastUpdated ?? 0;
@@ -264,37 +256,6 @@
       selMode.appendChild(opt);
     }
     selMode.value = state.mode;
-  }
-
-  function getTeamColor(t){
-    const {fmt} = derived(state.players, state.mode);
-    const showPicker = shouldShowColorPicker(state.players, state.mode, fmt.teamCount);
-    if(state.players===24 && state.mode==='FFA') return '';
-    if(showPicker) return t.color || '';
-    return teamAutoColor(Number(t.id));
-  }
-
-  function buildViewOptions(){
-    selView.innerHTML = '';
-    const o0 = document.createElement('option');
-    o0.value = 'none';
-    o0.textContent = '表示選択';
-    selView.appendChild(o0);
-    for(const t of state.teams){
-      const o = document.createElement('option');
-      o.value = t.id;
-      o.textContent = t.name?.trim() ? t.name.trim() : ('チーム' + (Number(t.id)+1));
-      selView.appendChild(o);
-    }
-    const os = document.createElement('option');
-    os.value = 'sum';
-    os.textContent = '合計のみ';
-    selView.appendChild(os);
-    selView.value = state.viewTeam;
-  }
-
-  function applyColorCell(td, color){
-    td.style.background = color || '';
   }
 
   function checkDuplicateKeys(){
@@ -317,90 +278,99 @@
     return m;
   }
 
+  function getTeamName(i){
+    const t = state.teams[i];
+    if(!t) return '';
+    const nm = (t.name ?? '').trim();
+    return nm ? nm : ('チーム' + (i+1));
+  }
+
+  // タグ固定：12+CPUは1段、それ以上は2段（wrap任せ、サイズ固定）
   function renderPinPreview(){
     pinPreview.innerHTML = '';
-    for(const t of state.teams){
-      const badge = document.createElement('div');
-      badge.className = 'badge';
-      const top = document.createElement('div');
-      top.className = 'badgeTop';
-      top.textContent = t.name?.trim() ? t.name.trim() : ('チーム' + (Number(t.id)+1));
-      const bot = document.createElement('div');
-      bot.className = 'badgeBot';
-      bot.textContent = t.key || '';
-      const bg = getTeamColor(t);
-      if(bg){ top.style.background = bg; bot.style.background = bg; }
-      badge.appendChild(top); badge.appendChild(bot);
-      pinPreview.appendChild(badge);
+    for(let i=0;i<state.teams.length;i++){
+      pinPreview.appendChild(makeBadge(i, false));
     }
-    const cpu = document.createElement('div');
-    cpu.className = 'badge';
-    const top = document.createElement('div');
-    top.className = 'badgeTop';
-    top.textContent = '★CPU';
-    top.style.background = CPU_COLOR;
-    top.style.color = '#fff';
-    const bot = document.createElement('div');
-    bot.className = 'badgeBot';
-    bot.textContent = state.cpuKey || '';
-    cpu.appendChild(top); cpu.appendChild(bot);
-    pinPreview.appendChild(cpu);
+    pinPreview.appendChild(makeCpuBadge(false));
   }
 
   function buildPinBar(){
     pinBarContent.innerHTML = '';
-    for(const t of state.teams){
-      const badge = document.createElement('div');
-      badge.className = 'badge';
-      const top = document.createElement('div');
-      top.className = 'badgeTop';
-      top.textContent = t.name?.trim() ? t.name.trim() : ('チーム' + (Number(t.id)+1));
-      const bot = document.createElement('div');
-      bot.className = 'badgeBot';
-      bot.textContent = t.key || '';
-      const bg = getTeamColor(t);
-      if(bg){ top.style.background = bg; bot.style.background = bg; }
-      badge.appendChild(top); badge.appendChild(bot);
-      pinBarContent.appendChild(badge);
+    for(let i=0;i<state.teams.length;i++){
+      pinBarContent.appendChild(makeBadge(i, true));
     }
-    const cpu = document.createElement('div');
-    cpu.className = 'badge';
+    pinBarContent.appendChild(makeCpuBadge(true));
+  }
+
+  function makeBadge(i, forBar){
+    const badge = document.createElement('div');
+    badge.className = 'badge';
+    const top = document.createElement('div');
+    top.className = 'badgeTop';
+    top.textContent = getTeamName(i);
+
+    // タグ固定は「タグだけ色」確定
+    const {fmt} = derived(state.players, state.mode);
+    const bg = hasColorSelect(fmt.teamCount) ? (state.teams[i].color || '') : teamAutoColor(i);
+    if(bg){
+      top.style.background = bg;
+      top.style.color = '#000';
+    }
+
+    const bot = document.createElement('div');
+    bot.className = 'badgeBot';
+    bot.textContent = state.teams[i].key || '';
+
+    badge.appendChild(top);
+    badge.appendChild(bot);
+    return badge;
+  }
+
+  function makeCpuBadge(forBar){
+    const badge = document.createElement('div');
+    badge.className = 'badge';
     const top = document.createElement('div');
     top.className = 'badgeTop';
     top.textContent = '★CPU';
     top.style.background = CPU_COLOR;
     top.style.color = '#fff';
+
     const bot = document.createElement('div');
     bot.className = 'badgeBot';
     bot.textContent = state.cpuKey || '';
-    cpu.appendChild(top); cpu.appendChild(bot);
-    pinBarContent.appendChild(cpu);
+
+    badge.appendChild(top);
+    badge.appendChild(bot);
+    return badge;
   }
 
+  // タグ設定：色は「色選択行のみ」確定
   function buildTagTable(){
     const {fmt} = derived(state.players, state.mode);
+    const teamCount = fmt.teamCount;
+    const colorOn = hasColorSelect(teamCount);
+
     tagTable.innerHTML = '';
     const tbody = document.createElement('tbody');
 
-    const rows = [
-      {head:'タグ', kind:'name'},
-      {head:'色選択', kind:'color'},
-      {head:'キー', kind:'key'},
-      {head:'点数補正', kind:'adj'},
-    ];
-
-    const showPicker = shouldShowColorPicker(state.players, state.mode, fmt.teamCount);
+    const rows = [];
+    rows.push({head:'タグ', kind:'name'});
+    if(colorOn) rows.push({head:'色選択', kind:'color'});
+    rows.push({head:'キー', kind:'key'});
+    rows.push({head:'点数補正', kind:'adj'});
 
     for(const row of rows){
       const tr = document.createElement('tr');
+
       const th = document.createElement('th');
       th.className = 'rowHead';
       th.textContent = row.head;
       tr.appendChild(th);
 
-      for(let i=0;i<fmt.teamCount;i++){
+      for(let i=0;i<teamCount;i++){
         const td = document.createElement('td');
 
+        // タグ行：色は塗らない（白）
         if(row.kind==='name'){
           const inp = document.createElement('input');
           inp.className = 'cellInp smalltxt';
@@ -409,42 +379,38 @@
           inp.autocomplete = 'off';
           inp.addEventListener('input', ()=>{
             state.teams[i].name = inp.value;
-            buildViewOptions();
             renderPinPreview();
+            buildPinBar();
             recalcAll(true);
+            recalcOptIfNeeded(true);
             scheduleSave();
           });
           td.appendChild(inp);
         }
 
+        // 色選択行：ここだけセル背景に色を付ける
         if(row.kind==='color'){
-          if(state.players===24 && state.mode==='FFA'){
-            td.textContent = '';
-          }else if(showPicker){
-            const sel = document.createElement('select');
-            sel.className = 'colorSel';
-            sel.tabIndex = -1;
-            for(const c of SELECT_COLORS){
-              const opt = document.createElement('option');
-              opt.value = c.color;
-              opt.textContent = c.name;
-              sel.appendChild(opt);
-            }
-            sel.value = state.teams[i]?.color ?? '';
-            applyColorCell(td, sel.value);
-            sel.addEventListener('change', ()=>{
-              state.teams[i].color = sel.value;
-              buildPinBar();
-              renderPinPreview();
-              recalcAll(true);
-              scheduleSave();
-            });
-            td.appendChild(sel);
-          }else{
-            const c = teamAutoColor(i);
-            applyColorCell(td, c);
-            td.textContent = '';
+          const sel = document.createElement('select');
+          sel.className = 'colorSel';
+          sel.tabIndex = -1;
+          for(const c of SELECT_COLORS){
+            const opt = document.createElement('option');
+            opt.value = c.color;
+            opt.textContent = c.name;
+            sel.appendChild(opt);
           }
+          sel.value = state.teams[i]?.color ?? '';
+          td.style.background = sel.value || '';
+          sel.addEventListener('change', ()=>{
+            state.teams[i].color = sel.value;
+            td.style.background = sel.value || '';
+            renderPinPreview();
+            buildPinBar();
+            recalcAll(true);
+            recalcOptIfNeeded(true);
+            scheduleSave();
+          });
+          td.appendChild(sel);
         }
 
         if(row.kind==='key'){
@@ -461,6 +427,7 @@
             renderPinPreview();
             buildPinBar();
             recalcAll(true);
+            recalcOptIfNeeded(true);
             scheduleSave();
           });
           td.appendChild(inp);
@@ -477,6 +444,7 @@
             inp.value = v;
             state.teams[i].adj = v;
             recalcAll(true);
+            recalcOptIfNeeded(true);
             scheduleSave();
           });
           td.appendChild(inp);
@@ -484,25 +452,76 @@
 
         tr.appendChild(td);
       }
+
       tbody.appendChild(tr);
     }
 
     tagTable.appendChild(tbody);
 
-    inpCpuKey.value = state.cpuKey ?? 'y';
-    inpCpuKey.addEventListener('input', ()=>{
-      const v = normalizeKey(inpCpuKey.value);
-      inpCpuKey.value = v;
-      state.cpuKey = v;
-      renderPinPreview();
-      buildPinBar();
-      recalcAll(true);
-      scheduleSave();
-    });
+    buildCpuMini(colorOn);
 
     checkDuplicateKeys();
     renderPinPreview();
     buildPinBar();
+  }
+
+  // ★CPU：色選択ありなら「タグ/色(グレー)/キー」、なしなら「タグ/キー」
+  function buildCpuMini(colorOn){
+    cpuMiniBody.innerHTML = '';
+
+    const rTag = document.createElement('div');
+    rTag.className = 'cpuRow';
+    const tag = document.createElement('div');
+    tag.className = 'cpuTag';
+    tag.textContent = '★CPU';
+    rTag.appendChild(tag);
+    cpuMiniBody.appendChild(rTag);
+
+    if(colorOn){
+      const rColor = document.createElement('div');
+      rColor.className = 'cpuRow cpuColorFixed';
+      rColor.title = '固定グレー';
+      cpuMiniBody.appendChild(rColor);
+    }
+
+    const rKey = document.createElement('div');
+    rKey.className = 'cpuRow';
+    const inp = document.createElement('input');
+    inp.className = 'cpuKeyInp';
+    inp.maxLength = 2;
+    inp.autocomplete = 'off';
+    inp.value = state.cpuKey ?? 'y';
+    inp.addEventListener('input', ()=>{
+      const v = normalizeKey(inp.value);
+      inp.value = v;
+      state.cpuKey = v;
+      renderPinPreview();
+      buildPinBar();
+      recalcAll(true);
+      recalcOptIfNeeded(true);
+      scheduleSave();
+    });
+    rKey.appendChild(inp);
+    cpuMiniBody.appendChild(rKey);
+  }
+
+  // 集計オプション：先頭「表示なし」、表示なしなら計算しない
+  function buildOptViewOptions(){
+    selView.innerHTML = '';
+
+    const o0 = document.createElement('option');
+    o0.value = 'none';
+    o0.textContent = '表示なし';
+    selView.appendChild(o0);
+
+    for(const t of state.teams){
+      const o = document.createElement('option');
+      o.value = t.id;
+      o.textContent = (t.name?.trim() ? t.name.trim() : ('チーム' + (Number(t.id)+1)));
+      selView.appendChild(o);
+    }
+
+    selView.value = state.optViewTeam;
   }
 
   function buildRankTable(){
@@ -514,17 +533,20 @@
     const tbl = document.createElement('table');
     tbl.className = 'rankTable';
 
+    // header 1
     const tr0 = document.createElement('tr');
     const thPts = document.createElement('th'); thPts.className='ptsCol headTop'; thPts.textContent='得点';
     const thRank = document.createElement('th'); thRank.className='rankCol headTop'; thRank.textContent='順位';
     tr0.appendChild(thPts); tr0.appendChild(thRank);
+
     const thRace = document.createElement('th');
     thRace.className='headTop';
     thRace.colSpan = races;
-    thRace.textContent='レース数';
+    thRace.textContent='レース';
     tr0.appendChild(thRace);
     tbl.appendChild(tr0);
 
+    // header 2
     const tr1 = document.createElement('tr');
     const thA = document.createElement('th'); thA.className='ptsCol'; thA.textContent='';
     const thB = document.createElement('th'); thB.className='rankCol'; thB.textContent='';
@@ -532,10 +554,12 @@
     for(let r=0;r<races;r++){
       const th = document.createElement('th');
       th.textContent = String(r+1);
+      th.classList.add('thin');
       tr1.appendChild(th);
     }
     tbl.appendChild(tr1);
 
+    // rows
     for(let p=0;p<players;p++){
       const tr = document.createElement('tr');
       if(players===24 && p===12) tr.classList.add('sepRow');
@@ -548,35 +572,62 @@
         const td = document.createElement('td');
         td.classList.add('thin');
 
+        // wrapper
+        const box = document.createElement('div');
+        box.className = 'rankCell';
+
         const inp = document.createElement('input');
-        inp.className = 'rankInput';
-        inp.maxLength = 2;
+        inp.className = 'rankKey';
         inp.autocomplete = 'off';
+        inp.inputMode = 'text';
         inp.value = state.cells?.[r]?.[p] ?? '';
         inp.dataset.race = String(r);
         inp.dataset.pos = String(p);
+
+        // タブ順は後でまとめて制御
+        inp.addEventListener('focus', ()=>{
+          // 「タグのまま編集」＝選択して次キーで置換
+          try{ inp.select(); }catch(e){}
+        });
 
         inp.addEventListener('input', ()=>{
           const v = normalizeKey(inp.value);
           inp.value = v;
           if(!state.cells[r]) state.cells[r] = {};
           state.cells[r][p] = v;
+
+          // 表示更新
+          updateRankCellDisplay(td, r, p);
+
+          // 1文字確定で次セル
           if(v !== '') focusNextCell(r,p);
-          recalcAll(true);
+
+          // 再計算
+          const ok = recalcAll(true);
+          if(ok) maybeAutoCopyMain();
+          recalcOptIfNeeded(true);
           scheduleSave();
         });
 
-        td.appendChild(inp);
+        const disp = document.createElement('div');
+        disp.className = 'rankDisp';
+
+        box.appendChild(inp);
+        box.appendChild(disp);
+
+        td.appendChild(box);
         tr.appendChild(td);
       }
       tbl.appendChild(tr);
     }
 
+    // course row
     const trC = document.createElement('tr');
-    const tdC0 = document.createElement('td'); tdC0.className='ptsCol'; tdC0.textContent='コース名'; tdC0.colSpan=2;
+    const tdC0 = document.createElement('td'); tdC0.className='ptsCol'; tdC0.textContent='コース'; tdC0.colSpan=2;
     trC.appendChild(tdC0);
     for(let r=0;r<races;r++){
       const td = document.createElement('td');
+      td.classList.add('thin');
       const inp = document.createElement('input');
       inp.className='courseInp';
       inp.value = state.courses?.[r] ?? '';
@@ -584,7 +635,9 @@
       inp.autocomplete='off';
       inp.addEventListener('input', ()=>{
         state.courses[r] = inp.value;
-        recalcAll(true);
+        const ok = recalcAll(true);
+        if(ok) maybeAutoCopyMain();
+        recalcOptIfNeeded(true);
         scheduleSave();
       });
       td.appendChild(inp);
@@ -592,12 +645,7 @@
     }
     tbl.appendChild(trC);
 
-    const trR = document.createElement('tr');
-    const tdR0 = document.createElement('td'); tdR0.className='ptsCol'; tdR0.textContent='残りレース数'; tdR0.colSpan=2;
-    trR.appendChild(tdR0);
-    for(let r=0;r<races;r++){ trR.appendChild(document.createElement('td')); }
-    tbl.appendChild(trR);
-
+    // miss row (枠なし)
     const trM = document.createElement('tr');
     const tdM0 = document.createElement('td'); tdM0.className='ptsCol missCol'; tdM0.textContent=''; tdM0.colSpan=2;
     trM.appendChild(tdM0);
@@ -609,11 +657,13 @@
     }
     tbl.appendChild(trM);
 
+    // lock row (行は残す)
     const trL = document.createElement('tr');
     const tdL0 = document.createElement('td'); tdL0.className='ptsCol'; tdL0.textContent=''; tdL0.colSpan=2;
     trL.appendChild(tdL0);
     for(let r=0;r<races;r++){
       const td = document.createElement('td');
+      td.classList.add('thin');
       const btn = document.createElement('button');
       btn.className='lockBtn';
       btn.type='button';
@@ -622,6 +672,7 @@
         state.locks[r] = !state.locks[r];
         btn.textContent = state.locks[r] ? '🔒' : '🔓';
         applyLocks();
+        rebuildTabOrder();
       });
       td.appendChild(btn);
       trL.appendChild(td);
@@ -629,7 +680,55 @@
     tbl.appendChild(trL);
 
     rankWrap.appendChild(tbl);
+
+    // 初期表示更新
+    for(let r=0;r<state.races;r++){
+      for(let p=0;p<state.players;p++){
+        const td = getRankTd(r,p);
+        if(td) updateRankCellDisplay(td, r, p);
+      }
+    }
+
     applyLocks();
+    rebuildTabOrder();
+  }
+
+  function getRankTd(r,p){
+    const tbl = rankWrap.querySelector('table');
+    if(!tbl) return null;
+    return tbl.querySelector(`input.rankKey[data-race="${r}"][data-pos="${p}"]`)?.closest('td') ?? null;
+  }
+
+  // 表示（タグ化）＋色反映
+  function updateRankCellDisplay(td, r, p){
+    const inp = td.querySelector('input.rankKey');
+    const disp = td.querySelector('.rankDisp');
+    const raw = (state.cells?.[r]?.[p] ?? '').trim();
+
+    let label = '';
+    let bg = '';
+
+    if(raw === ''){
+      label = '';
+      bg = '';
+    }else if(raw === state.cpuKey){
+      label = '★CPU';
+      bg = CPU_COLOR;
+    }else{
+      const keyMap = getKeyMap();
+      const tid = keyMap.get(raw);
+      if(tid == null){
+        label = raw; // 無効キーはそのまま
+        bg = '';
+      }else{
+        const idx = Number(tid);
+        label = getTeamName(idx);
+        bg = getTeamColorForScoreCell(idx);
+      }
+    }
+
+    disp.textContent = label;
+    td.style.background = bg || '';
   }
 
   function applyLocks(){
@@ -637,15 +736,11 @@
     if(!tbl) return;
     for(let r=0;r<state.races;r++){
       const locked = !!state.locks[r];
-      tbl.querySelectorAll(`input.rankInput[data-race="${r}"]`).forEach(inp=>{
+      tbl.querySelectorAll(`input.rankKey[data-race="${r}"]`).forEach(inp=>{
         inp.disabled = locked;
-        inp.tabIndex = locked ? -1 : 0;
       });
       const course = tbl.querySelector(`input.courseInp[data-race="${r}"]`);
-      if(course){
-        course.disabled = locked;
-        course.tabIndex = locked ? -1 : 0;
-      }
+      if(course) course.disabled = locked;
     }
   }
 
@@ -653,8 +748,66 @@
     let nr = r, np = p+1;
     if(np >= state.players){ np = 0; nr = r+1; }
     if(nr >= state.races) return;
-    const next = rankWrap.querySelector(`input.rankInput[data-race="${nr}"][data-pos="${np}"]`);
+    const next = rankWrap.querySelector(`input.rankKey[data-race="${nr}"][data-pos="${np}"]`);
     if(next && !next.disabled) next.focus();
+  }
+
+  // Tab順（確定仕様）
+  function rebuildTabOrder(){
+    // 1) タグ設定：右→左（タグ → キー → 点数補正）
+    // 2) 順位入力：レースごと（1位→…→24位→コース名→次レース）
+    // ルール設定、色選択は Tab対象外
+
+    // ルール設定
+    inpQualify.tabIndex = -1;
+    document.querySelectorAll('.colorSel').forEach(el => el.tabIndex = -1);
+
+    // まず全て -1
+    document.querySelectorAll('input,select,button').forEach(el=>{
+      // ボタンは通常どおりTab可にしたいものもあるが、ここでは入力系だけ制御
+      if(el.classList.contains('cellInp') || el.classList.contains('cpuKeyInp') || el.classList.contains('rankKey') || el.classList.contains('courseInp')){
+        el.tabIndex = -1;
+      }
+    });
+
+    // タグ設定：タグ行→キー行→点数補正行（右→左）
+    const rows = Array.from(tagTable.querySelectorAll('tr'));
+    const rowByHead = new Map();
+    for(const tr of rows){
+      const th = tr.querySelector('th.rowHead');
+      if(!th) continue;
+      rowByHead.set(th.textContent.trim(), tr);
+    }
+    const orderHeads = ['タグ','キー','点数補正'];
+    let tab = 1;
+
+    for(const head of orderHeads){
+      const tr = rowByHead.get(head);
+      if(!tr) continue;
+      const inputs = Array.from(tr.querySelectorAll('input.cellInp'));
+      // 右→左＝後ろから
+      for(let i=inputs.length-1;i>=0;i--){
+        inputs[i].tabIndex = tab++;
+      }
+    }
+
+    // CPUキーは最後（タグ設定の後）
+    const cpuKey = cpuMiniBody.querySelector('input.cpuKeyInp');
+    if(cpuKey) cpuKey.tabIndex = tab++;
+
+    // 順位入力：レース→順位→コース
+    for(let r=0;r<state.races;r++){
+      for(let p=0;p<state.players;p++){
+        const inp = rankWrap.querySelector(`input.rankKey[data-race="${r}"][data-pos="${p}"]`);
+        if(inp && !inp.disabled){
+          inp.tabIndex = tab++;
+        }
+      }
+      const course = rankWrap.querySelector(`input.courseInp[data-race="${r}"]`);
+      if(course && !course.disabled){
+        course.tabIndex = tab++;
+      }
+    }
   }
 
   function clearRaceErrors(){
@@ -662,17 +815,11 @@
       const miss = document.getElementById('miss_'+r);
       if(miss) miss.textContent = '';
     }
-    rankWrap.querySelectorAll('.cellErr').forEach(el=>el.classList.remove('cellErr'));
   }
+
   function markRaceError(r, msg){
     const miss = document.getElementById('miss_'+r);
     if(miss) miss.textContent = msg;
-    rankWrap.querySelectorAll(`input.rankInput[data-race="${r}"]`).forEach(inp=>{
-      inp.parentElement?.classList.add('cellErr');
-    });
-  }
-  function freezeOutputs(){
-    // outputs remain as-is
   }
 
   function allCellsFilled(r){
@@ -689,7 +836,7 @@
     return c;
   }
 
-  function buildCertText(standings, remaining){
+  function buildCertText(standings, remaining, qualifyRaw){
     const maxDiff = MAXDIFF[state.players][state.mode] ?? 0;
     if(standings.length < 2) return '';
     const diff12 = standings[0].displayTotal - standings[1].displayTotal;
@@ -698,7 +845,7 @@
     if(standings.length === 2){
       return win ? '▶︎勝利確定' : '';
     }
-    const q = safeParseInt(sanitizeIntInput(state.qualify));
+    const q = safeParseInt(sanitizeIntInput(qualifyRaw));
     if(q > 0){
       if(win) return '▶︎1位確定';
       const k = clamp(q,1,standings.length-1);
@@ -711,35 +858,12 @@
     return win ? '▶︎1位確定' : '';
   }
 
-  function buildCopyLine(standings, remaining){
-    const view = state.viewTeam;
-    const showOthers = state.showOthers;
-    const selfId = (view !== 'none' && view !== 'sum') ? view : null;
-
-    const parts = [];
-    for(const s of standings){
-      const label = (selfId && s.teamId===selfId) ? `【${s.name}】` : s.name;
-      if(!showOthers && selfId && s.teamId!==selfId) continue;
-      parts.push(`${label} ${s.displayTotal}`);
+  function hasAnyAdjInput(){
+    for(const t of state.teams){
+      const v = sanitizeIntInput(t.adj);
+      if(v && v !== '0') return true;
     }
-
-    let rankLabel = '';
-    if(selfId){
-      const idx = standings.findIndex(x=>x.teamId===selfId);
-      if(idx >= 0) rankLabel = (remaining===0) ? `最終${idx+1}位` : `現在${idx+1}位`;
-    }
-
-    let course = '';
-    for(let r=state.races-1;r>=0;r--){
-      const c = (state.courses?.[r] ?? '').trim();
-      if(c){ course = c; break; }
-    }
-
-    let line = parts.join('／');
-    if(rankLabel) line += `／${rankLabel}`;
-    if(course) line += `／${course}`;
-    line += `@${remaining}(補正込)`;
-    return line;
+    return false;
   }
 
   function renderAdjLog(){
@@ -747,7 +871,8 @@
     for(const t of state.teams){
       const v = sanitizeIntInput(t.adj);
       if(v && v !== '0'){
-        const name = t.name?.trim() ? t.name.trim() : ('チーム' + (Number(t.id)+1));
+        const idx = Number(t.id);
+        const name = getTeamName(idx);
         lines.push(`${name} ${v}`);
       }
     }
@@ -786,33 +911,12 @@
     }
   }
 
-  async function maybeAutoCopy(){
-    autoCopyMsg.textContent = '';
-    autoCopyMsg.className = 'autoCopyMsg';
-    if(state.showOthers) return;
-    if(state.viewTeam === 'none' || state.viewTeam === 'sum') return;
-
-    const ok = await copyText(outOpt.textContent);
-    if(ok){
-      autoCopyMsg.textContent = '★自動コピーしました';
-      autoCopyMsg.classList.add('ok');
-      setTimeout(()=>{
-        if(autoCopyMsg.textContent === '★自動コピーしました'){
-          autoCopyMsg.textContent = '';
-          autoCopyMsg.className = 'autoCopyMsg';
-        }
-      }, 10000);
-    }else{
-      autoCopyMsg.textContent = '★自動コピーできませんでした';
-      autoCopyMsg.classList.add('ng');
-    }
-  }
-
-  function recalcAll(doAutoCopy=false){
+  // ===== 計算：メイン =====
+  function calcStandings(){
     clearRaceErrors();
+
     if(!checkDuplicateKeys()){
-      freezeOutputs();
-      return;
+      return {ok:false, reason:'dup'};
     }
 
     const players = state.players;
@@ -826,7 +930,6 @@
     const courseLog = [];
 
     const requiredPerTeam = Math.floor(players / teamCount);
-
     let frozen = false;
 
     for(let r=0;r<races;r++){
@@ -925,8 +1028,7 @@
     }
 
     if(frozen){
-      freezeOutputs();
-      return;
+      return {ok:false, reason:'race'};
     }
 
     const adjVals = state.teams.map(t=> safeParseInt(t.adj));
@@ -934,25 +1036,198 @@
 
     const standings = state.teams.map((t,i)=>({
       teamId: t.id,
-      name: (t.name?.trim() ? t.name.trim() : ('チーム' + (i+1))),
+      idx: i,
+      name: getTeamName(i),
       total: teamTotals[i],
       displayTotal: displayTotals[i],
-      color: getTeamColor(t),
     })).sort((a,b)=> b.displayTotal - a.displayTotal);
 
     const completed = Object.keys(raceScores).length;
     const remaining = clamp(races - completed, 0, races);
 
-    certText.textContent = state.showCert ? buildCertText(standings, remaining) : '';
+    return {ok:true, standings, remaining, courseLog};
+  }
 
-    const line = buildCopyLine(standings, remaining);
+  // メイン表示生成（自チーム=0）
+  function buildMainLine(standings, remaining){
+    const selfIdx = 0;
+    const self = standings.find(s=>s.idx===selfIdx);
+    const selfTotal = self ? self.displayTotal : 0;
+
+    const showSum = !!state.showSum;
+    const parts = [];
+
+    for(const s of standings){
+      if(s.idx === selfIdx){
+        parts.push(`【${s.name}】 ${s.displayTotal}`);
+        continue;
+      }
+      const diff = s.displayTotal - selfTotal;
+      if(showSum){
+        const sign = (diff>=0) ? `+${diff}` : `${diff}`;
+        parts.push(`${s.name} ${s.displayTotal}(${sign})`);
+      }else{
+        const sign = (diff>=0) ? `+${diff}` : `${diff}`;
+        parts.push(`${s.name} ${sign}`);
+      }
+    }
+
+    // 自チーム順位
+    let rankLabel = '';
+    if(self){
+      const idx = standings.findIndex(x=>x.idx===selfIdx);
+      rankLabel = (remaining===0) ? `最終${idx+1}位` : `現在${idx+1}位`;
+    }
+
+    // 最新コース（最後に入力されたもの）
+    let course = '';
+    for(let r=state.races-1;r>=0;r--){
+      const c = (state.courses?.[r] ?? '').trim();
+      if(c){ course = c; break; }
+    }
+
+    let line = parts.join('／');
+    if(rankLabel) line += `／${rankLabel}`;
+    if(course) line += `／${course}`;
+    line += `＠${remaining}`;
+
+    if(hasAnyAdjInput()){
+      line += ` (補正込)`;
+    }
+
+    if(state.showCert){
+      const cert = buildCertText(standings, remaining, state.qualify);
+      if(cert) line += cert;
+    }
+
+    return line;
+  }
+
+  // オプション表示（基準=選択チーム）
+  function buildOptLine(standings, remaining, baseIdx){
+    const base = standings.find(s=>s.idx===baseIdx);
+    const baseTotal = base ? base.displayTotal : 0;
+
+    const showSum = !!state.showSum; // 表示オプションは共通でOK
+    const parts = [];
+
+    for(const s of standings){
+      if(s.idx === baseIdx){
+        parts.push(`【${s.name}】 ${s.displayTotal}`);
+        continue;
+      }
+      const diff = s.displayTotal - baseTotal;
+      if(showSum){
+        const sign = (diff>=0) ? `+${diff}` : `${diff}`;
+        parts.push(`${s.name} ${s.displayTotal}(${sign})`);
+      }else{
+        const sign = (diff>=0) ? `+${diff}` : `${diff}`;
+        parts.push(`${s.name} ${sign}`);
+      }
+    }
+
+    // 基準チーム順位
+    let rankLabel = '';
+    if(base){
+      const idx = standings.findIndex(x=>x.idx===baseIdx);
+      rankLabel = (remaining===0) ? `最終${idx+1}位` : `現在${idx+1}位`;
+    }
+
+    // 最新コース
+    let course = '';
+    for(let r=state.races-1;r>=0;r--){
+      const c = (state.courses?.[r] ?? '').trim();
+      if(c){ course = c; break; }
+    }
+
+    let line = parts.join('／');
+    if(rankLabel) line += `／${rankLabel}`;
+    if(course) line += `／${course}`;
+    line += `＠${remaining}`;
+
+    if(hasAnyAdjInput()){
+      line += ` (補正込)`;
+    }
+
+    // 勝ち確も通常同様
+    if(state.showCert){
+      const cert = buildCertText(standings, remaining, state.qualify);
+      if(cert) line += cert;
+    }
+
+    return line;
+  }
+
+  // メイン再計算：返り値 ok
+  function recalcAll(doLogs){
+    const res = calcStandings();
+    if(!res.ok){
+      // 出力凍結（今のまま）
+      certText.textContent = '';
+      renderAdjLog();
+      if(!state.showCourseLog) logCourse.textContent = '';
+      return false;
+    }
+
+    const {standings, remaining, courseLog} = res;
+
+    certText.textContent = state.showCert ? buildCertText(standings, remaining, state.qualify) : '';
+
+    const line = buildMainLine(standings, remaining);
     outMain.textContent = line;
-    outOpt.textContent = line;
 
     renderAdjLog();
     renderCourseLog(courseLog);
 
-    if(doAutoCopy) maybeAutoCopy();
+    return true;
+  }
+
+  // メイン自動コピー（メイン更新タイミングで呼ぶ）
+  async function maybeAutoCopyMain(){
+    // 失敗保持中は、手動コピーで解除する仕様なのでここでは上書きしない
+    if(state.autoCopyHoldFail) return;
+
+    autoCopyMsg.textContent = '';
+    autoCopyMsg.className = 'autoCopyMsg';
+
+    const ok = await copyText(outMain.textContent);
+    if(ok){
+      autoCopyMsg.textContent = '★自動コピーしました';
+      autoCopyMsg.classList.add('ok');
+      setTimeout(()=>{
+        if(autoCopyMsg.textContent === '★自動コピーしました'){
+          autoCopyMsg.textContent = '';
+          autoCopyMsg.className = 'autoCopyMsg';
+        }
+      }, 10000);
+    }else{
+      autoCopyMsg.textContent = '★自動コピーできませんでした';
+      autoCopyMsg.classList.add('ng');
+      state.autoCopyHoldFail = true;
+    }
+  }
+
+  // 集計オプション：表示なしなら計算しない/空
+  function recalcOptIfNeeded(){
+    if(state.optViewTeam === 'none'){
+      outOpt.textContent = '';
+      return;
+    }
+    const baseIdx = Number(state.optViewTeam);
+    if(!Number.isFinite(baseIdx) || baseIdx < 0 || baseIdx >= state.teams.length){
+      outOpt.textContent = '';
+      return;
+    }
+
+    const res = calcStandings();
+    if(!res.ok){
+      // 表示は凍結ではなく空にするほうが混同しにくい
+      outOpt.textContent = '';
+      return;
+    }
+
+    const {standings, remaining} = res;
+    outOpt.textContent = buildOptLine(standings, remaining, baseIdx);
   }
 
   function pruneInputs(){
@@ -995,7 +1270,7 @@
     buildModeOptions();
 
     if(prevPlayers !== state.players || prevMode !== state.mode){
-      // delete adjustment/log on players or mode change
+      // players or mode change: adjustment/log clear（仕様）
       for(const t of state.teams) t.adj = '';
       state.adjLog = [];
     }
@@ -1016,10 +1291,22 @@
 
     spMaxDiff.textContent = String(MAXDIFF[state.players][state.mode] ?? '--');
 
+    // 集計オプションの選択が範囲外なら表示なしへ
+    if(state.optViewTeam !== 'none'){
+      const n = Number(state.optViewTeam);
+      if(!Number.isFinite(n) || n < 0 || n >= state.teams.length){
+        state.optViewTeam = 'none';
+      }
+    }
+
     buildTagTable();
-    buildViewOptions();
+    buildOptViewOptions();
     buildRankTable();
-    recalcAll(true);
+
+    const ok = recalcAll(true);
+    if(ok) maybeAutoCopyMain();
+    recalcOptIfNeeded(true);
+
     scheduleSave();
   }
 
@@ -1032,11 +1319,23 @@
       state.teams[i].adj = '';
     }
     state.cpuKey = 'y';
-    inpCpuKey.value = state.cpuKey;
     state.adjLog = [];
+
     buildTagTable();
-    buildViewOptions();
-    recalcAll(true);
+    buildOptViewOptions();
+
+    // 順位表示更新（色・タグ）
+    for(let r=0;r<state.races;r++){
+      for(let p=0;p<state.players;p++){
+        const td = getRankTd(r,p);
+        if(td) updateRankCellDisplay(td, r, p);
+      }
+    }
+
+    const ok = recalcAll(true);
+    if(ok) maybeAutoCopyMain();
+    recalcOptIfNeeded(true);
+
     scheduleSave();
   }
 
@@ -1052,6 +1351,7 @@
   function hidePin(){ pinBar.classList.add('hidden'); pinBar.setAttribute('aria-hidden','true'); }
 
   function init(){
+    // 互換破棄：バージョン違いはloadSavedが消す
     const restored = loadSaved();
 
     document.querySelectorAll('input[name="players"]').forEach(r=>{
@@ -1076,27 +1376,62 @@
       const v = sanitizeIntInput(inpQualify.value);
       inpQualify.value = v;
       state.qualify = v;
-      recalcAll(true);
+      const ok = recalcAll(true);
+      if(ok) maybeAutoCopyMain();
+      recalcOptIfNeeded(true);
       scheduleSave();
     });
 
     btnResetTags.addEventListener('click', resetTags);
     btnResetAll.addEventListener('click', resetAll);
 
-    btnCopyMain.addEventListener('click', async ()=>{ await copyText(outMain.textContent); });
-    btnCopyOpt.addEventListener('click', async ()=>{ await copyText(outOpt.textContent); });
+    btnCopyMain.addEventListener('click', async ()=>{
+      // 手動コピーでは自動コピー表示は出さない
+      await copyText(outMain.textContent);
+      // 失敗保持解除（次の手動コピー押下まで、なのでここで解除）
+      state.autoCopyHoldFail = false;
+      autoCopyMsg.textContent = '';
+      autoCopyMsg.className = 'autoCopyMsg';
+    });
+
+    btnCopyOpt.addEventListener('click', async ()=>{
+      await copyText(outOpt.textContent);
+      // 手動コピーなので自動コピー系メッセージは出さない
+    });
 
     chkShowSum.checked = state.showSum;
     chkShowCert.checked = state.showCert;
-    chkShowOthers.checked = state.showOthers;
     chkShowCourseLog.checked = state.showCourseLog;
 
-    chkShowSum.addEventListener('change', ()=>{ state.showSum = chkShowSum.checked; recalcAll(true); scheduleSave(); });
-    chkShowCert.addEventListener('change', ()=>{ state.showCert = chkShowCert.checked; recalcAll(true); scheduleSave(); });
-    chkShowOthers.addEventListener('change', ()=>{ state.showOthers = chkShowOthers.checked; recalcAll(true); scheduleSave(); });
-    chkShowCourseLog.addEventListener('change', ()=>{ state.showCourseLog = chkShowCourseLog.checked; recalcAll(true); scheduleSave(); });
+    chkShowSum.addEventListener('change', ()=>{
+      state.showSum = chkShowSum.checked;
+      const ok = recalcAll(true);
+      if(ok) maybeAutoCopyMain();
+      recalcOptIfNeeded(true);
+      scheduleSave();
+    });
+    chkShowCert.addEventListener('change', ()=>{
+      state.showCert = chkShowCert.checked;
+      const ok = recalcAll(true);
+      if(ok) maybeAutoCopyMain();
+      recalcOptIfNeeded(true);
+      scheduleSave();
+    });
+    chkShowCourseLog.addEventListener('change', ()=>{
+      state.showCourseLog = chkShowCourseLog.checked;
+      const ok = recalcAll(true);
+      if(ok) maybeAutoCopyMain();
+      recalcOptIfNeeded(true);
+      scheduleSave();
+    });
 
-    selView.addEventListener('change', ()=>{ state.viewTeam = selView.value; recalcAll(true); scheduleSave(); });
+    buildOptViewOptions();
+    selView.addEventListener('change', ()=>{
+      state.optViewTeam = selView.value;
+      // 表示なしなら計算しない
+      recalcOptIfNeeded(true);
+      scheduleSave();
+    });
 
     btnPin.addEventListener('click', showPin);
     btnPinClose.addEventListener('click', hidePin);
@@ -1114,13 +1449,18 @@
     spMaxDiff.textContent = String(MAXDIFF[state.players][state.mode] ?? '--');
 
     buildTagTable();
-    buildViewOptions();
+    buildOptViewOptions();
     buildRankTable();
-    recalcAll(false);
+
+    const ok = recalcAll(false);
+    if(ok) maybeAutoCopyMain();
+    recalcOptIfNeeded(false);
 
     if(!restored){
       state.lastUpdated = nowMs();
       doSave();
+    }else{
+      rebuildTabOrder();
     }
   }
 
