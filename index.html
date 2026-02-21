@@ -17,6 +17,7 @@
     </header>
 
     <main>
+      <!-- ルール設定 -->
       <section class="card">
         <div class="cardHead">
           <div class="cardTitle">ルール設定</div>
@@ -25,8 +26,8 @@
           <div class="ruleCol">
             <div class="ruleLine">
               <span class="label">対戦人数</span>
-              <label class="radio"><input type="radio" name="players" value="12" checked>12人制</label>
-              <label class="radio"><input type="radio" name="players" value="24">24人制</label>
+              <label class="radio"><input type="radio" name="players" value="12">12人制</label>
+              <label class="radio"><input type="radio" name="players" value="24" checked>24人制</label>
             </div>
             <div class="ruleLine">
               <span class="label">対戦形式</span>
@@ -34,98 +35,96 @@
             </div>
             <div class="ruleLine">
               <span class="label">レース数</span>
-              <label class="radio"><input type="radio" name="races" value="8" checked>8</label>
-              <label class="radio"><input type="radio" name="races" value="12">12</label>
+              <label class="radio"><input type="radio" name="races" value="8">8</label>
+              <label class="radio"><input type="radio" name="races" value="12" checked>12</label>
             </div>
           </div>
 
           <div class="ruleCol">
             <div class="ruleLine">
               <span class="label">通過組数</span>
-              <input id="inpQualify" class="inp small" inputmode="numeric" autocomplete="off" tabindex="-1" />
+              <input id="inpQualify" class="inp small" inputmode="numeric" autocomplete="off" />
             </div>
             <div class="ruleLine">
               <span class="label">CPU加算</span>
               <div class="cpuBox">
-                <label class="radio"><input type="radio" name="cpuCalc" value="MKB" checked>MKBルール</label>
-                <label class="radio"><input type="radio" name="cpuCalc" value="SUMMIT">SUMMITルール</label>
+                <label class="radio"><input type="radio" name="cpuCalc" value="MKB" checked>MKB</label>
+                <label class="radio"><input type="radio" name="cpuCalc" value="SUMMIT">SUMMIT</label>
               </div>
             </div>
           </div>
         </div>
       </section>
 
+      <!-- タグ設定 -->
       <section class="card">
         <div class="cardHead">
-          <div class="cardTitle">タグ設定</div>
+          <div class="cardTitle">
+            タグ設定
+            <span class="note">※キーは半角英数1字のみ</span>
+          </div>
           <div class="cardActions">
-            <button id="btnResetTags" class="btn">Reset Tags</button>
-            <span id="dupKeyMsg" class="errInline" aria-live="polite"></span>
+            <button id="btnResetTags" class="btn">Reset</button>
+            <span id="dupKeyMsg" class="errInline"></span>
           </div>
         </div>
 
         <div class="tagWrap">
           <div class="tagTableWrap">
-            <table class="sheet" id="tagTable" aria-label="タグ設定"></table>
-          </div>
-
-          <div class="cpuMini" id="cpuMini" aria-label="CPU設定">
-            <div class="cpuMiniHead">★CPU</div>
-            <div class="cpuMiniBody" id="cpuMiniBody"></div>
+            <table class="sheet" id="tagTable"></table>
           </div>
         </div>
       </section>
 
+      <!-- 順位入力 -->
       <section class="card">
         <div class="cardHead">
-          <div class="cardTitle">順位入力</div>
-          <div class="cardActions">
-            <button id="btnResetAll" class="btn">Reset</button>
+          <div class="cardTitleRow">
+            <div class="cardTitle">順位入力</div>
+            <button id="btnPin" class="btn">タグ固定</button>
           </div>
         </div>
 
-        <div class="pinRow">
-          <button id="btnPin" class="btn">タグ固定</button>
-          <div id="pinPreview" class="pinPreview" aria-label="タグ固定プレビュー"></div>
+        <div class="pinPreviewRow">
+          <div id="pinPreview" class="pinPreview"></div>
         </div>
 
         <div class="smallLine">
-          <span>1レース最大点差：<span id="spMaxDiff">--</span>点</span>
+          1レース最大点差：<span id="spMaxDiff">--</span>点
         </div>
 
         <div id="rankWrap" class="rankWrap"></div>
       </section>
 
+      <!-- 集計結果 -->
       <section class="card">
         <div class="cardHead">
           <div class="cardTitle">集計結果</div>
           <div class="cardActions">
             <button id="btnCopyMain" class="btn">copy</button>
+            <span id="autoCopyMsg" class="autoCopyMsg"></span>
           </div>
         </div>
 
         <div class="copyLine">
-          <div id="outMain" class="outLine" title="コピペ用"></div>
+          <div id="outMain" class="outLine wrap"></div>
         </div>
 
         <div class="optionRow">
-          <div class="optTitle">表示オプション</div>
           <label class="chk"><input id="chkShowSum" type="checkbox">合計点</label>
           <label class="chk"><input id="chkShowCert" type="checkbox">勝ち確表示</label>
-          <span id="certText" class="certText"></span>
         </div>
 
         <div class="divider"></div>
 
         <div class="optionRow">
-          <div class="optTitle">集計オプション</div>
-          <button id="btnCopyOpt" class="btn">copy</button>
+          <span class="optTitle">集計オプション</span>
           <select id="selView" class="sel"></select>
-          <span id="autoCopyMsg" class="autoCopyMsg" aria-live="polite"></span>
+          <button id="btnCopyOpt" class="btn">copy</button>
         </div>
 
         <div class="copyLine">
-          <div id="outOpt" class="outLine"></div>
+          <div id="outOpt" class="outLine wrap"></div>
         </div>
 
         <div class="divider"></div>
@@ -134,37 +133,8 @@
           <div class="logTitle">点数補正ログ</div>
           <div id="logAdj" class="log"></div>
         </div>
-
-        <div class="logBlock">
-          <div class="logTitle">コース選択ログ</div>
-          <label class="chk small"><input id="chkShowCourseLog" type="checkbox">表示</label>
-          <div id="logCourse" class="log"></div>
-        </div>
       </section>
     </main>
-  </div>
-
-  <div id="pinBar" class="pinBar hidden" aria-hidden="true">
-    <div class="pinBarInner">
-      <div id="pinBarContent" class="pinBarContent"></div>
-      <button id="btnPinClose" class="pinClose" aria-label="閉じる">×</button>
-    </div>
-  </div>
-
-  <div id="modalSpec" class="modal hidden" aria-hidden="true">
-    <div class="modalBack"></div>
-    <div class="modalBox">
-      <div class="modalHead">
-        <div class="modalTitle">サイト仕様書</div>
-        <button id="btnSpecClose" class="pinClose" aria-label="閉じる">×</button>
-      </div>
-      <div class="modalBody">
-        <div class="specText">
-          ※このページは検索避け（noindex/robots）設定済みです。<br>
-          本ツールはローカル保存（localStorage）で動作します。
-        </div>
-      </div>
-    </div>
   </div>
 
   <script src="app.js"></script>
